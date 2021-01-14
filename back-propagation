@@ -1,21 +1,10 @@
-#include <assert.h>
 #include <math.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-
-/* each weight's gradient*/
-double gradient[11];
 
 double sigmoid(double a){
-
     double o = ( 1 / (1+ exp(-a)));
     return o;
 }
-
-/* conventional generator (splitmix) developed by Steele et al. */
 static uint64_t splitmix_x;
 static inline uint64_t splitmix() {
 
@@ -26,74 +15,74 @@ static inline uint64_t splitmix() {
     return z ^ (z >> 31);
 }
 
-/* uniform random numbers between 0 and 1 */
 #define ANN_RAND() (((double) splitmix()) / UINT64_MAX)
 
-void ax_by_c_sig1 (double a, double b , double c, double x1 , double x2 , double x3 , double bias){
+void backward (double *in, double *res , double *gradient , int bias){
 
-    double res = sigmoid( (a*x1)+(b*x2)+(c*x3)+bias );
+    gradient[3] = ( res[0] * (1-res[0]) ) * gradient[8-bias];
 
-    gradient[8] += ( res * (1-res) ) * gradient[6]; //bias , g9
-
-    gradient[2] += c * gradient[8] ;//g3
-    gradient[1] += b * gradient[8] ;//g2
-    gradient[0] += a * gradient[8] ;//g1
+    gradient[2] = in[2] * gradient[3] ;
+    gradient[1] = in[1] * gradient[3] ;
+    gradient[0] = in[0] * gradient[3] ;
 
 }
 
-void ax_by_c_sig2 (double a, double b , double c, double x1 , double x2 , double x3 , double bias){
+void backward2 (double *res , double *gradient){
 
-    double res = sigmoid( (a*x1)+(b*x2)+(c*x3)+bias );
-    
-
-    gradient[9] += ( res * (1-res) ) * (gradient[7]); //bias , g10
-
-    gradient[5] += c * gradient[9] ;//g6
-    gradient[4] += b * gradient[9] ;//g5
-    gradient[3] += a * gradient[9] ;//g4
-
+    gradient[10] = ( res[2] * (1-res[2]) ) * (1);
+    gradient[9] = res[1] * gradient[10] ;
+    gradient[8] = res[0] * gradient[10] ;
 }
 
-void ax_by_c_sig3 (double a, double b , double x1 , double x2 , double bias){
-
-    double res = sigmoid( (a*x1)+(b*x2)+bias );
-
-    gradient[10] += ( res * (1-res) ) * (1); //bias , g11
-    gradient[7] += b * gradient[10] ;//g8
-    gradient[6] += a * gradient[10] ;//g7
-}
 
 int main(){
    /* input */
-   double a = 1.0 ;
-   double b = 0.0 ;
-   double c = 1.0 ;
-   
+   double in[3] = {1.0 , 0.0 , 1.0};
+
    /* learning rate */
    double lr = 0.01 ;
-   
    /* weight */
-   double x[11] ;
+   double *x = malloc(sizeof(double)*11) ;
+   double *xx = x;
+   double *gradient = malloc(sizeof(double)*11) ;
 
    printf("-----------Before------------- \n");
-    
+
    for(int i=0;i<11;i++){
     x[i]= ANN_RAND() -0.5;
-    printf("%d : %lf  \n" , i,x[i]);
+    printf("w%d : %lf  \n" , i,x[i]);
    }
-   printf("-----------After------------- \n");
-    
-   double res1 = sigmoid( (a*x[0])+(b*x[1])+(c*x[2])+x[8] );
-   double res2 = sigmoid( (a*x[3])+(b*x[4])+(c*x[5])+x[9] );
 
-   ax_by_c_sig3(res1,res2,x[6],x[7],x[10]);
-   ax_by_c_sig1(a,b,c,x[0],x[1],x[2],x[8]);
-   ax_by_c_sig2(a,b,c,x[3],x[4],x[5],x[9]);
+   double *nero = malloc(sizeof(double)*3);
+/*------------------------------forward--------------------------*/
+            /*input-hidden*/
+
+   for(int k = 0; k<2;k++){
+
+       for(int j = 0;j<3;j++){
+           nero[k] += *xx++ * in[j] ;
+       }
+       nero[k] += *xx++;
+       nero[k] = sigmoid(nero[k]);
+   }
 
 
+            /*output layers*/
+   for(int k = 0; k<2;k++){
+       nero[2] += *xx++ * nero[k];
+   }
+   nero[2] += *xx ;
+   nero[2] = sigmoid(nero[2]);
+/*------------------------------backward--------------------------*/
+   backward2( nero , gradient);
+   backward( in , nero , gradient , 0) ;
+   backward( in , ++nero , gradient+4 , 3) ;
+/*------------------------------update--------------------------*/
+printf("-----------After------------- \n");
    for(int i=0;i<11;i++){
        x[i] -= lr * gradient[i];
-       printf("%d : %lf  \n" , i,x[i]);
+       printf("w%d : %lf  \n" , i,x[i]);
    }
+
    return 0;
 }
