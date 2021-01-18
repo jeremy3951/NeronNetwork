@@ -6,8 +6,7 @@ double sigmoid(double a){
     return o;
 }
 
-#include <stdint.h>
-// 當輸入 x 大於等於 0 時，回傳 x，否則回傳 0
+
 float ReLU(float x) {
 
     union {
@@ -19,6 +18,10 @@ float ReLU(float x) {
 
     return out.f;
 }
+
+/* learning rate */
+double lr = 0.5 ;
+
 
 static uint64_t splitmix_x;
 static inline uint64_t splitmix() {
@@ -32,7 +35,7 @@ static inline uint64_t splitmix() {
 
 #define ANN_RAND() (((double) splitmix()) / UINT64_MAX)
 
-void backward (double *w, double *in, double *res , double *gradient , int bias , int row){
+void backward (int nums , double *w, double *in, double *res , double *gradient , int bias , int row){
 
 
     double dc1 = gradient[8] * gradient[10];
@@ -42,48 +45,67 @@ void backward (double *w, double *in, double *res , double *gradient , int bias 
     double dg = ( res[1+bias] * (1-res[1+bias]) ) * dc2;
 
     for(int i =7;i>=0; i--){
+
         if(i>3){
             gradient[i] = dg;
-            w[i] -= 0.5 * gradient[i];
-            printf("w%d %lf \n",i , (w[i]) );
+            w[i] -= lr * gradient[i] ;
+            printf("g%d %lf \n",i , (gradient[i]) );
 
         }else{
             gradient[i] = df;
-            w[i] -= 0.5 * gradient[i];
-            printf("w%d %lf \n",i , (w[i]) );
+            w[i] -= lr * gradient[i] ;
+            printf("g%d %lf \n",i , (gradient[i]) );
         }
+
     }
-    printf("-------------\n");
+    //printf("-------------\n");
 
 }
 
-void backward2 (double *w, double *in, double *res , double *gradient ,double *ans){  //( process , gradient , output)
+int backward2 (int nums , double *w, double *in, double *res , double *gradient ,double *ans){  //( process , gradient , output)
 
 
-    double o1234567[8] ;
-    for(int i =0;i<8;i++){
-        o1234567[i] = res[3*i+2] - ans[i] ;
-        printf("res%d %lf - ", i,(res[3*i+2]) );
+    double o1234567[nums] ;
+
+    double earlystop = 0.0;
+    //res[3*i+2] >= 0.5? 1.0:0.0
+    for(int i =0;i<nums;i++){
+
+        o1234567[i] = ( res[3*i+2] >= 0.5? 1.0:0.0 )- ans[i];
+        earlystop += o1234567[i] * o1234567[i] ;
+
+        printf("res%d %lf - ", i , ( res[3*i+2] >= 0.5? 1.0:0.0 ) );
         printf("ans%d %lf \n", i,(ans[i]) );
+
     }
 
-    double grad_d[8];
-    for(int i =0;i<8;i++){
+    if(earlystop == 0){
+            printf("---------------------stop!----------------------\n");
+            return 1;
+        }
+
+    printf(" \n" );
+
+
+    double grad_d[nums];
+    for(int i =0;i<nums;i++){
+        printf("----------------\no%d 's gradient \n -----------------\n" , i+1);
+
         grad_d[i] = res[3*i+2] * ( 1 - res[3*i+2] ) * o1234567[i]  ;
 
         gradient[10] = 1 * grad_d[i] ;
-        w[10] -= 0.5 * gradient[10];
-        printf("w10 %lf \n",(w[10]) );
+        w[10] -= lr * gradient[10];
+        printf("g10 %lf \n",(gradient[10]) );
 
         gradient[9]  = res[3*i+1] * grad_d[i] ;
-        w[9] -= 0.5 * gradient[9];
-        printf("w9 %lf \n",(w[9]) );
+        w[9] -= lr * gradient[9];
+        printf("g9 %lf \n",(gradient[9]) );
 
-        gradient[8]  = res[3*i] * grad_d[i];
-        w[8] -= 0.5 * gradient[8];
-        printf("w8 %lf \n",(w[8]) );
+        gradient[8]  = res[3*i] * grad_d[i] ;
+        w[8] -= lr * gradient[8];
+        printf("g8 %lf \n",(gradient[8]) );
 
-        backward(w , in , res , gradient , 3*i , i );
+        backward(nums , w , in , res , gradient , 3*i , i );
     }
 
 }
@@ -126,15 +148,14 @@ int main(){
    double *ptr_to_in = total_in;
 
    const double total_output[8] = {
-        0, 0, 1, 1, 0, 1, 0, 1,
+
+        0, 0 , 1, 1 , 0, 1, 0, 1,
     };
 #define in_len sizeof(total_in)/sizeof(total_in[0])
 #define out_len sizeof(total_out)/sizeof(total_out[0])
 
    double *ptr_to_ans = total_output;
 
-   /* learning rate */
-   double lr = 1 ;
    /* weight */
    double *w = malloc(sizeof(double)*11) ;
    double *temp_w = w;
@@ -144,20 +165,27 @@ int main(){
    double *output = malloc(sizeof(double)*8);
    double *process = malloc(sizeof(double)* 8 *3);
 
-
    for(int i=0;i<11;i++){
         w[i]= ANN_RAND() -0.5;
         gradient[i] = 0.0;
    }
 
+int nums = 5 ;
+for(int times = 0; times <5000; times ++){
+    if(times == 100){
+        lr = 0.05 ;
+    }
+    if(times == 1000){
+        lr = 0.005;
+    }
+    if(times == 2500){
+        lr = 0.005;
+    }
+    if(times == 20000){
+        lr = 0.0001;
+    }
 
-for(int times = 0; times <1; times ++){
-
-   for(int i=0;i<11;i++){
-        gradient[i] = 0.0;
-   }
-
-   for(int s=0;s<8;s++){
+   for(int s=0;s<nums;s++){
         temp_w = w;
         for(int i=3*s;i<(3*s+3);i++){
             process[i] = 0.0;
@@ -182,10 +210,10 @@ for(int times = 0; times <1; times ++){
            output[s] = process[2+3*s];
         }
 
-
         /*------------------------------backward--------------------------*/
-           backward2(w, ptr_to_in , process , gradient , ptr_to_ans);
-
+           int stop = backward2( nums , w, ptr_to_in , process , gradient , ptr_to_ans);
+           if(stop==1)
+                return 0;
         /*------------------------------update--------------------------*/
            for(int i=0;i<11;i++){
                //w[i] -= lr * gradient[i];
@@ -196,12 +224,10 @@ for(int times = 0; times <1; times ++){
 
         }
 
-
-
 }
 // predict
-for(int i=0;i<8;i++){
-    printf("%lf \n",test(ptr_to_in , i , w) );
+for(int i=0;i<nums;i++){
+    printf("%lf \n", (test(ptr_to_in , i , w)>=0.5?1.0:0.0 ) );
 }
 
 
