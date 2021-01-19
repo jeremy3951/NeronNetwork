@@ -53,8 +53,8 @@ void backward ( double *w, double *in, double *res , double *gradient , int bias
     double dc1 = gradient[8] * gradient[10];
     double dc2 = gradient[9] * gradient[10];
 
-    double df = ( res[0+bias] * (1-res[0+bias]) ) * dc1;//0123---8
-    double dg = ( res[1+bias] * (1-res[1+bias]) ) * dc2;//4567---9
+    double df = ( res[0+bias] * (1-res[0+bias]) ) * dc1;
+    double dg = ( res[1+bias] * (1-res[1+bias]) ) * dc2;
 
     int i = 7;
     while(i>=0){
@@ -139,7 +139,9 @@ int main(){
    /* weight */
    double *w = malloc(sizeof(double)*11) ;
    double *temp_w = w;
+   /* gradient */
    double *gradient = malloc(sizeof(double)*11) ;
+   /* neuron output */
    double *process = malloc(sizeof(double)* 8 *3);
 
    for(int i=0;i<11;i++){
