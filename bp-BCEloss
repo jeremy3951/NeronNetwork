@@ -1,0 +1,276 @@
+#include <math.h>
+#include <stdint.h>
+#include <time.h>
+#include <assert.h>
+double sigmoid(double a){
+    double o = ( 1 / (1+ exp(-a)));
+    return o;
+}
+
+float ReLU(float x) {
+
+    union {
+        float f;
+        int32_t i;
+    } out = {.f = x}; /* 將資料存入 union */
+
+    out.i &= ~(out.i >> 31);
+
+    return out.f;
+}
+
+/* learning rate */
+double lr = 0.01 ;
+
+
+static uint64_t splitmix_x;
+static inline uint64_t splitmix() {
+
+    splitmix_x += 0x9E3779B97F4A7C15;
+    uint64_t z = splitmix_x;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EB;
+    return z ^ (z >> 31);
+}
+static void splitmix_init() {
+    /* Hopefully, ASLR makes our function address random */
+    uintptr_t x = (uintptr_t)((void *) &splitmix_init);
+    struct timespec time;
+    clock_gettime(CLOCK_MONOTONIC, &time);
+    x ^= (uintptr_t) time.tv_sec;
+    x ^= (uintptr_t) time.tv_nsec;
+    splitmix_x = x;
+
+    /* do a few randomization steps */
+    uintptr_t max = ((x ^ (x >> 17)) & 0x0F) + 1;
+    for (uintptr_t i = 0; i < max; i++)
+        splitmix();
+}
+
+#define ANN_RAND() (((double) splitmix()) / UINT64_MAX)
+
+void backward ( double *w, double *in, double *res , double *gradient , int bias ,double d){
+
+    double dc1 = w[8] * d; //d 是前面的 df
+    double dc2 = w[9] * d; 
+
+    double df = ( res[0+bias] * (1-res[0+bias]) ) * dc1;
+    double dg = ( res[1+bias] * (1-res[1+bias]) ) * dc2;
+
+    int i = 7;
+    while(i>=0){
+       gradient[i] = (( i==7? dg:df));
+
+       for(int j =0;j<3; j++){
+            gradient[i-j-1] = (*(in+bias+2-j ) *gradient[i]);
+        }
+        i-=4;
+    }
+
+}
+
+void backward2 (int i , double *in , double *w , double *res , double *gradient ,double *ans){  //( process , gradient , output)
+
+
+    /*binary cross entropy 推導
+    L = -[ t *log(y) + ( 1-t ) * log(1-y) ]
+    L = -t *log(y) - ( 1-t ) * log(1-y)  =  -A - B
+    dL = 1 = d-A = d-B
+
+    dA = -1 * dL = dB
+    A = t *log(y)
+    B = ( 1-t ) * log(1-y)
+
+    dt = log(y)* dA  //沒用
+    dlog(y) = t * dA = -t
+    dy = -t / y
+
+    d( 1-t ) = log(1-y) * dB //沒用
+    dlog(1-y) = ( 1-t ) * dB = t-1
+    d(1-y) = (t-1) / (1-y) =d-y
+    dy = -1 * d-y = (1-t)/(1-y)
+
+
+    dy = (1-t) / (1-y) +  -t / y
+
+    y = sig(oa*w8 + ob*w9 + w10) = sig(f)
+    df = y * ( 1-y ) * dy
+    將 dy 帶入相消得到
+    df = -t*(1-y) + y(1-t)
+    整理一下
+    df = -t +y
+    f = oa*w8 + ob*w9 + w10
+
+    */
+    double t = ans[i]  ;
+
+    double y = res[3*i+2] ;
+
+
+    double df =  y - t  ;
+
+    gradient[10] = (df) ;
+
+
+    gradient[9]  = res[3*i+1] * (df) ;
+
+    gradient[8] = res[3*i] * (df);
+
+    backward( w , in , res , gradient , 3*i ,df);
+
+}
+
+
+double test (double *in , int row , double *weight ){
+
+    double *output = malloc(sizeof(double)*3) ;
+    double *w = weight ;
+
+    for(int i = 0 ; i <3;i++)
+        output[i] = 0.0 ;
+
+    for(int k = 0; k<2;k++){
+           for(int j = 0;j<3;j++){
+               output[k] += *w++ * *(in+(row*3)+j) ;
+           }
+           output[k] += *w++;
+           output[k] = sigmoid(output[k]);
+       }
+                /*output layers*/
+       for(int k = 0; k<2;k++){
+           output[2] += *w++ * output[k];
+       }
+       output[2] += *w ;
+       output[2] =sigmoid(output[2]); // 神經元的 output
+
+
+    return output[2];
+}
+
+
+int main(){
+    //splitmix_init();
+   /* input */
+   const double total_in[8][3] =
+   {
+        {0, 0, 0}, {0, 0, 1}, {0, 1, 0}, {0, 1, 1},
+        {1, 0, 0}, {1, 0, 1}, {1, 1, 0}, {1, 1, 1},
+    };
+   double *ptr_to_in = total_in;
+   /* output */ 
+   const double total_output[8] = {
+
+        0, 0 , 1, 1 , 0, 1, 0, 1,
+    };
+   double *ptr_to_out = total_output;
+
+
+   /* weight */
+   double *w = malloc(sizeof(double)*11) ;
+   double *temp_w = w;
+   /* gradient */
+   double *gradient = malloc(sizeof(double)*11) ;
+   /* neuron output */
+   double *process = malloc(sizeof(double)* 8 *3);
+
+   for(int i=0;i<11;i++){
+        w[i] = ANN_RAND()-0.5 ;
+        printf("w%d %lf \n" , i , w[i]);
+        gradient[i] = 0.0;
+   }
+
+
+int nums = 8 ; //nums 為資料個數
+
+double *temp = malloc(sizeof(double)*nums);
+int times = 0;
+
+for(int times = 0; times <30000; times ++){
+   lr = times==8000? 0.0001:0.001 ;
+   lr = times==15000? 0.00001:0.0001 ;
+
+
+   for(int s=0;s<nums;s++){
+        temp_w = w;
+
+
+        for(int i=3*s;i<(3*s+3);i++){
+            process[i] = 0.0;
+           }
+        /*------------------------------forward--------------------------*/
+          {
+           for(int k = 0; k<2;k++){       /*input-hidden*/
+               for(int j = 0;j<3;j++){
+                   process[k+3*s] += *temp_w++ * total_in[s][j] ;
+               }
+
+               process[k+3*s] += *temp_w++;
+               process[k+3*s] = sigmoid(process[k+3*s]);
+
+           }
+           for(int k = 0; k<2;k++){       /*output layers*/
+               process[2+3*s] += *temp_w++ * process[k+3*s];
+           }
+           process[2+3*s] += *temp_w ;
+           process[2+3*s] =sigmoid(process[2+3*s]); // 神經元的 output
+
+        }  }
+        printf("----------------Round%d--------------\n" , times+1);
+        double earlystop = 0.0;
+        for(int i=0;i<nums;i++){
+               temp[i] = ( process[2+3*i] >= 0.5? 1.0:0.0 ) - total_output[i];
+               earlystop += temp[i] * temp[i] ;
+               printf("res%d %lf - ", i , ( process[2+3*i] /*>= 0.5? 1.0:0.0 */) );
+               printf("ans%d %lf \n", i , (total_output[i]) );
+        }
+        printf(" \n" );
+
+        /*------------------------------backward--------------------------*/
+        double error=0.0;
+        for(int i=0;i<nums;i++){
+            double A = total_output[i]*log(process[2+3*i]);
+            double B = (1-total_output[i])*(1-log(process[2+3*i]));
+            double sum = (A+B);
+            //printf("A :%lf + B:%lf = %lf\n" ,  A , B ,sum);
+            error +=  sum;
+            //printf("e :%lf\n" ,  error);
+        }
+        printf("error:%lf\n",-error/8);
+
+
+           for(int i=0;i<nums;i++){
+               if(temp[i]==0){
+                continue;
+               }
+
+               for(int i=0;i<11;i++){
+                    gradient[i] = 0.0;
+               }
+
+               backward2( i , ptr_to_in , w , process , gradient , ptr_to_out);
+
+               for(int j=0;j<11;j++){
+                   //printf("g%d %lf : \n" , j , gradient[j]);
+                   w[j] -= lr * gradient[j];
+                   //printf("w%d %lf -= g%d %lf * lr \n" , j , w[j] , j , gradient[j]);
+               }
+               //printf("\n");
+           }
+
+           for(int i=0;i<11;i++){
+               //printf("g%d %lf : \n" , i , w[i]);
+           }
+
+           if(earlystop ==0 ){
+                printf("-------------stop in round %d --------------" , times+1);
+                return 0;
+           }
+
+}
+// predict
+for(int i=0;i<nums;i++){
+    printf("%lf \n", (test(ptr_to_in , i , w)  >=0.5?1.0:0.0  ) );
+}
+
+   return 0;
+}
