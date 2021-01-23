@@ -48,10 +48,10 @@ static void splitmix_init() {
 
 #define ANN_RAND() (((double) splitmix()) / UINT64_MAX)
 
-void backward ( double *w, double *in, double *res , double *gradient , int bias ){
+void backward ( double *w, double *in, double *res , double *gradient , int bias ,double d){
 
-    double dc1 = gradient[8] * gradient[10];
-    double dc2 = gradient[9] * gradient[10];
+    double dc1 = w[8] * d ;
+    double dc2 = w[9] * d ;
 
     double df = ( res[0+bias] * (1-res[0+bias]) ) * dc1;
     double dg = ( res[1+bias] * (1-res[1+bias]) ) * dc2;
@@ -59,36 +59,30 @@ void backward ( double *w, double *in, double *res , double *gradient , int bias
     int i = 7;
     while(i>=0){
        gradient[i] = ( i==7? dg:df);
-       w[i] -= lr * gradient[i] ;
-       printf("g%d %lf \n",i , (gradient[i]) );
 
        for(int j =0;j<3; j++){
             gradient[i-j-1] = *(in+bias+j ) *gradient[i];
-            w[i-j-1] -= lr * gradient[i-j-1] ;
-            printf("g%d %lf \n",i-j-1 , (gradient[i]) );
 
         }
         i-=4;
     }
-    printf("\n");
+    //printf("\n");
 
 }
 
 void backward2 (int i , double *in , double *w , double *res , double *gradient ,double *ans){  //( process , gradient , output)
 
-    gradient[10] = res[3*i+2] * ( 1- res[3*i+2] ) * ans[i];
-    w[10] -= lr * gradient[10];
-    printf("g10 %lf \n",(gradient[10]) );
+    double df = 0.0;
+    df = res[3*i+2] * ( 1- res[3*i+2] ) * 2*ans[i];
 
-    gradient[9]  = res[3*i+1] * gradient[10] ;
-    w[9] -= lr * gradient[9];
-    printf("g9 %lf \n",(gradient[9]) );
+    gradient[10] = 1 * df;
 
-    gradient[8]  = res[3*i] * gradient[10] ;
-    w[8] -= lr * gradient[8];
-    printf("g8 %lf \n",(gradient[8]) );
+    gradient[9]  = res[3*i+1] * df ;
 
-    backward( w , in , res , gradient , 3*i );
+    gradient[8]  = res[3*i] * df ;
+
+
+    backward( w , in , res , gradient , 3*i ,df);
 
 }
 
@@ -184,13 +178,22 @@ for(int times = 0; times <100 ; times ++){
            printf("----------------Round%d--------------\n" , times+1);
            double earlystop = 0.0;
            for(int i=0;i<nums;i++){
-               temp[i] = ( process[2+3*i] >= 0.5? 1.0:0.0 ) - total_output[i];
-               earlystop += temp[i] * temp[i] ;
-               printf("res%d %lf - ", i , ( process[2+3*i] >= 0.5? 1.0:0.0 ) );
+               temp[i] = ( process[2+3*i] /*>= 0.5? 1.0:0.0 */) - total_output[i];
+               earlystop += (temp[i]>= 0.5? 1.0:0.0) * (temp[i]>= 0.5? 1.0:0.0) ;
+               
+               printf("res%d %lf - ", i , ( process[2+3*i] /*>= 0.5? 1.0:0.0 */) );
                printf("ans%d %lf \n", i , (total_output[i]) );
 
-               backward2( i , ptr_to_in , w , process , gradient , temp);
            }
+
+           for(int i=0;i<nums;i++){
+               backward2( i , ptr_to_in , w , process , gradient , temp);
+
+               for(int j=0;j<11;j++){
+                   w[j] -= lr * gradient[j];
+               }
+           }
+
 
            if(earlystop ==0 ){
                 printf("-------------stop in round %d --------------" , times+1);
